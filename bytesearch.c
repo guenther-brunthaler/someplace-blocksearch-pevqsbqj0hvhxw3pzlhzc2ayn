@@ -2,15 +2,15 @@
 #include <stdlib.h>
 #include <assert.h>
 
-typedef struct resource_tag *resource;
-struct resource_tag {
-   resource older;
+typedef struct resource resource;
+struct resource {
+   resource *older;
    void (*action)(void);
 };
 
-static resource rlist;
+static resource *rlist;
 
-static void release_until(resource stop) {
+static void release_until(resource *stop) {
    while (rlist) (*rlist->action)();
 }
 
@@ -26,14 +26,14 @@ static void *malloc_ck(size_t bytes) {
    die("Out of memory!");
 }
 
-static void push_resource(resource new_rsc, void (*new_action)()) {
+static void push_resource(resource *new_rsc, void (*new_action)()) {
    new_rsc->action= new_action;
    new_rsc->older= rlist;
    rlist= new_rsc;
 }
 
 static void *pop_resource(void) {
-   resource r;
+   resource *r;
    assert(rlist);
    rlist= (r= rlist)->older;
    return r;
@@ -44,7 +44,7 @@ static void malloc_dtor(void) {
 }
 
 static void *malloc_resource(size_t total_bytes) {
-   resource r;
+   resource *r;
    assert(total_bytes >= sizeof(*r));
    push_resource(r= malloc_ck(total_bytes), &malloc_dtor);
    return r;
@@ -77,7 +77,7 @@ static buffer *new_buffer(void) {
    buffer_resource *br= malloc_resource(sizeof *br);
    br->descriptor.start= 0;
    br->descriptor.allocated= 0;
-   push_resource(br->linkage, buffer_dtor);
+   push_resource(&br->linkage, buffer_dtor);
    return &br->descriptor;
 }
 
@@ -147,7 +147,7 @@ static buffer *load_remaining(FILE *fh) {
 
 int main(int argc, char **argv) {
    char const *find;
-   if (argc != 1) die("One argument: The file/device to be searched.");
+   if (argc != 2) die("One argument: The file/device to be searched.");
    find= load_remaining(stdin)->start;
    release_until(0);
 }
