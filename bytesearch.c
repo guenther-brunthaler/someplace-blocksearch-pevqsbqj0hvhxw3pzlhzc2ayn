@@ -57,7 +57,7 @@ typedef struct {
 } buffer;
 
 typedef struct {
-   resource linkage;
+   resource rsrc;
    buffer descriptor;
 } buffer_resource;
 
@@ -77,7 +77,7 @@ static buffer *new_buffer(void) {
    buffer_resource *br= malloc_resource(sizeof *br);
    br->descriptor.start= 0;
    br->descriptor.allocated= 0;
-   push_resource(&br->linkage, buffer_dtor);
+   br->rsrc.action= buffer_dtor;
    return &br->descriptor;
 }
 
@@ -90,7 +90,7 @@ static void *realloc_ck(void *p, size_t newsz) {
    }
    if (!p) return malloc_ck(newsz);
    if (pnew= realloc(p, newsz)) return pnew;
-   die("Failed reallocating a memory block to a new size!");
+   die("Could not resize the memory allocation!");
 }
 
 static void grow_buffer(buffer *buf, size_t bigger_minimum_size) {
@@ -145,9 +145,14 @@ static buffer *load_remaining(FILE *fh) {
    return buf;
 }
 
+static void fflush_ck(FILE *stream) {
+   if (fflush(stream)) die("Write error!");
+}
+
 int main(int argc, char **argv) {
    char const *find;
    if (argc != 2) die("One argument: The file/device to be searched.");
    find= load_remaining(stdin)->start;
    release_until(0);
+   fflush_ck(0);
 }
