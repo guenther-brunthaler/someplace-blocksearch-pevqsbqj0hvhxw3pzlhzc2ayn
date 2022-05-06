@@ -1,5 +1,5 @@
 static char VERSION_INFO[]= {
-   "Version 2022.125\n"
+   "Version 2022.126\n"
    "Copyright (c) 2022 Guenther Brunthaler. All rights reserved.\n"
    "\n"
    "This program is free software.\n"
@@ -312,17 +312,18 @@ int main(int argc, char **argv) {
       usage.prog_name= "(unnamed_program)";
       track_resource(&usage.rsrc, &usage_action);
       if (arg == argc) {
-         more_args:
+         need_more:
          die("Too few arguments!");
       }
       usage.prog_name= argv[arg];
-      if (++arg == argc) goto more_args;
+      if (++arg == argc) goto need_more;
       if (!strcmp(argv[arg], "--")) {
-         if (++arg == argc) goto more_args;
+         if (++arg == argc) goto need_more;
+      } else if (*argv[arg] == '-') {
+         die("Unknown option!");
       }
-      if (*argv[arg] == '-') die("Unknown option!");
       resize_buffer(work= new_tracked_buffer(), convert_off_t(argv[arg]));
-      if (++arg == argc) goto more_args;
+      if (++arg == argc) goto need_more;
       needle= tracked_stream_remainder(stdin);
       freopen_ck(argv[arg], "r", stdin);
       if (++arg == argc) goto args_done;
