@@ -21,7 +21,6 @@ AC_TYPE_OFF_T
 AC_TYPE_SIZE_T
 
 # Checks for library functions.
-AC_FUNC_FSEEKO
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([strchr])
