@@ -4,7 +4,7 @@
 AC_PREREQ([2.69])
 AC_INIT([bytesearch], [1.0], [])
 AM_INIT_AUTOMAKE
-AC_CONFIG_SRCDIR([blocksearch.c])
+AC_CONFIG_SRCDIR([autogen.sh])
 AC_CONFIG_HEADERS([config.h])
 
 # Checks for programs.
