@@ -1,6 +1,6 @@
 static char VERSION_INFO[]= {
-   "Version 2022.126\n"
-   "Copyright (c) 2022 Guenther Brunthaler. All rights reserved.\n"
+   "Version 2023.126\n"
+   "Copyright (c) 2022-2023 Guenther Brunthaler. All rights reserved.\n"
    "\n"
    "This program is free software.\n"
    "Distribution is permitted under the terms of the GPLv3.\n"
@@ -30,8 +30,10 @@ static char HELP[]= {
    "%s"
 };
 
-#define _POSIX_C_SOURCE 1
-#define _FILE_OFFSET_BITS 64
+#if HAVE_CONFIG_H
+   #include "config.h"
+#endif
+#define _POSIX_C_SOURCE 200112L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
