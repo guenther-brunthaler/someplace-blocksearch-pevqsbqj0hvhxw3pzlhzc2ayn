@@ -1,0 +1,35 @@
+blocksearch
+===========
+Guenther Brunthaler
+
+Quickly searches a huge block device (or file) for a byte string 
+which must not cross block boundaries. (This means the program 
+will only search within the individual blocks.)
+
+Typical usage:
+
+----
+$ printf '\x55\xaa' | blocksearch 100000 /dev/mmcblk0 200
+----
+
+This will read block device /dev/mmcblk0 in chunks of 1 MiB 
+(0x100000 bytes) starting at byte offset 0x200 (= 512 decimal) 
+into the device and display the hexadecimal byte offset of the 
+first occurrence of the byte sequence 0x55, 0xaa.
+
+All numeric arguments must be hexadecimal values without a radix 
+indicator, and the result will also be displayed in this format.
+
+The block size (which must be a power of 2) and the pathname of 
+the file or block device to be searched are the only required 
+arguments.
+
+Optionally, a byte offset into the file where to start the search 
+may also be specified.
+
+If the search string cannot be found, no output will be produced, 
+but the result code of the program will still indicate success.
+
+A result code indicating failure will only be produced if the 
+program has been invoked with incorrect arguments of if an I/O 
+error occurred.
