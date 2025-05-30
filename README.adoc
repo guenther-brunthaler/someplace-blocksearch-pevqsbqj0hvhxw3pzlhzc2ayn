@@ -27,9 +27,10 @@ arguments.
 Optionally, a byte offset into the file where to start the search 
 may also be specified.
 
-If the search string cannot be found, no output will be produced, 
-but the result code of the program will still indicate success.
+If the search string cannot be found, an empty line will be 
+output, but the result status code of the process will still 
+indicate success.
 
-A result code indicating failure will only be produced if the 
-program has been invoked with incorrect arguments of if an I/O 
-error occurred.
+A result status code indicating failure will only be produced if 
+the program has been invoked with incorrect arguments or if an 
+I/O error or other unexpected type of error occurred.

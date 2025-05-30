@@ -27,6 +27,10 @@ static char HELP[] = {
    "measurements are bytes (neither sectors, blocks, kB, MB nor\n"
    "anything else).\n"
    "\n"
+   "The result status code of the program does not indicate whether\n"
+   "the byte string has been found. It will only indicate failure if\n"
+   "invoked with invalid arguments or if an I/O error occurred.\n"
+   "\n"
    "%s"
 };
 
