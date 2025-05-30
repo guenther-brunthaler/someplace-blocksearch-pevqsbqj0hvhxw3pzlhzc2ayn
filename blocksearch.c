@@ -1,5 +1,5 @@
 static char VERSION_INFO[] = {
-   "Version 2025.150.1\n"
+   "Version 2025.150.2\n"
    "Copyright (c) 2022-2025 Guenther Brunthaler. All rights reserved.\n"
    "\n"
    "This program is free software.\n"
@@ -29,7 +29,8 @@ static char HELP[] = {
    "\n"
    "The result status code of the program does not indicate whether\n"
    "the byte string has been found. It will only indicate failure if\n"
-   "invoked with invalid arguments or if an I/O error occurred.\n"
+   "invoked with invalid arguments or if an I/O error or an\n"
+   "unexpected error occurred.\n"
    "\n"
    "%s"
 };
