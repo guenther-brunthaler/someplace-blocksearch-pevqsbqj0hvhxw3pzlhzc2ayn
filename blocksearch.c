@@ -1,5 +1,5 @@
 static char VERSION_INFO[] = {
-   "Version 2025.150\n"
+   "Version 2025.150.1\n"
    "Copyright (c) 2022-2025 Guenther Brunthaler. All rights reserved.\n"
    "\n"
    "This program is free software.\n"
@@ -56,7 +56,7 @@ static resource *rlist;
 static int errors;
 
 static void release_tracked_until(resource *stop) {
-   while (rlist) (*rlist->action)();
+   while (rlist != stop) (*rlist->action)();
 }
 
 static void die(char const *emsg) {
@@ -68,8 +68,8 @@ static void die(char const *emsg) {
 
 static void *malloc_ck(size_t bytes) {
    void *memblk;
-   if ((memblk = malloc(bytes)) != 0) return memblk;
-   die("Out of memory!");
+   if ((memblk = malloc(bytes)) == 0) die("Out of memory!");
+   return memblk;
 }
 
 static void track_resource(resource *new_rsc, void (*new_action)()) {
@@ -135,8 +135,10 @@ static void *realloc_ck(void *p, size_t newsz) {
       return 0;
    }
    if (!p) return malloc_ck(newsz);
-   if ((pnew = realloc(p, newsz)) != 0) return pnew;
-   die("Could not resize the memory allocation!");
+   if ((pnew = realloc(p, newsz)) == 0) {
+      die("Could not resize the memory allocation!");
+   }
+   return pnew;
 }
 
 static void grow_buffer(slice *buf, size_t bigger_minimum_size) {
@@ -251,7 +253,7 @@ static off_t convert_off_t(char const *hex) {
    return value;
 }
 
-static int scan4match(
+static void scan4match(
    FILE *haystack, slice const *needle, slice *work, size_t fpos
 ) {
    if (needle->length > work->capacity) {
@@ -260,9 +262,11 @@ static int scan4match(
    {
       size_t read;
       while (
-         read = fread_ck(
-            work->start, sizeof(char), work->capacity, haystack
-         )
+         (
+            read = fread_ck(
+               work->start, sizeof(char), work->capacity, haystack
+            )
+         ) != 0
       ) {
          size_t already_matched, boff;
          already_matched = boff = 0;
@@ -288,8 +292,10 @@ static int scan4match(
 static off_t lseek_ck(int fildes, off_t offset, int whence) {
    off_t new;
    errno = 0;
-   if ((new = lseek(fildes, offset, whence)) != -1 || !errno) return new;
-   die("Failure changing the current file offset position!");
+   if ((new = lseek(fildes, offset, whence)) == (off_t)-1 && errno != 0) {
+      die("Failure changing the current file offset position!");
+   }
+   return new;
 }
 
 typedef struct {
