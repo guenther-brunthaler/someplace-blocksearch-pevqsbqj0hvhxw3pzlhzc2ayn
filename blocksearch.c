@@ -1,5 +1,5 @@
 static char VERSION_INFO[] = {
-   "Version 2025.150.2\n"
+   "Version 2025.249\n"
    "Copyright (c) 2022-2025 Guenther Brunthaler. All rights reserved.\n"
    "\n"
    "This program is free software.\n"
@@ -47,47 +47,64 @@ static char HELP[] = {
 #include <errno.h>
 #include <sys/types.h>
 
-typedef struct resource resource;
-struct resource {
-   resource *older;
-   void (*action)(void);
+typedef struct resource_tag resource;
+struct resource_tag {
+   resource *link; /* Next older resource. */
+   void *ivars; /* Instance variables of resource object. */
+   /* Destructor or other kind of cleanup-time action. */
+   void (*action)(
+      resource **rlist /* Address of pointer to first resource list entry. */
+   );
 };
 
-static resource *rlist;
 static int errors;
 
+static resource **get_rlist(void) {
+   static resource *rlist; /* Currently allocated resources. */
+   return &rlist;
+}
+
 static void release_tracked_until(resource *stop) {
-   while (rlist != stop) (*rlist->action)();
+   resource **rlist = get_rlist();
+   while (*rlist != stop) (*(*rlist)->action)(rlist);
 }
 
 static void die(char const *emsg) {
+   size_t len;
    if (!errors) errors = -1; /* Means 1 or more errors. */
-   (void)fprintf(stderr, "%s\n", emsg);
-   release_tracked_until(0);
+   if (((len = strlen(emsg)) != 0) && strspn(&emsg[len - 1], ".!?") != 0) {
+      (void)fputs(emsg, stderr); (void)fputc('\n', stderr);
+   } else {
+      perror(emsg);
+   }
+   release_tracked_until(NULL);
    exit(EXIT_FAILURE);
 }
 
 static void *malloc_ck(size_t bytes) {
    void *memblk;
-   if ((memblk = malloc(bytes)) == 0) die("Out of memory!");
+   if ((memblk = malloc(bytes)) == NULL) die("Out of memory");
    return memblk;
 }
 
-static void track_resource(resource *new_rsc, void (*new_action)()) {
+static void track_resource(
+   resource *new_rsc, void (*new_action)(resource **rlist)
+) {
+   resource **rlist = get_rlist();
    new_rsc->action = new_action;
-   new_rsc->older = rlist;
-   rlist = new_rsc;
+   new_rsc->link = *rlist;
+   *rlist = new_rsc;
 }
 
-static void *untrack_resource(void) {
+static void *untrack_resource(resource **rlist) {
    resource *r;
-   assert(rlist);
-   rlist = (r = rlist)->older;
+   assert(*rlist);
+   *rlist = (r = *rlist)->link;
    return r;
 }
 
-static void malloc_dtor(void) {
-   free(untrack_resource());
+static void malloc_dtor(resource **rlist) {
+   free(untrack_resource(rlist));
 }
 
 static void *new_tracked_resource(size_t total_bytes) {
@@ -99,8 +116,8 @@ static void *new_tracked_resource(size_t total_bytes) {
 
 typedef struct {
    char *start; /* If NULL then yet unallocated buffer. */
-   size_t length; /* Must be <= capacity but only if capacity != 0. */
-   size_t capacity; /* If non-zero or start == NULL: Slice is resizable. */
+   size_t active; /* Must be <= allocated but only if allocated != 0. */
+   size_t allocated; /* If non-zero or start == NULL: Slice is resizable. */
 } slice;
 
 typedef struct {
@@ -108,10 +125,10 @@ typedef struct {
    slice descriptor;
 } buffer_resource;
 
-static void buffer_dtor(void) {
-   buffer_resource *br = untrack_resource();
-   if (br->descriptor.capacity) {
-      assert(br->descriptor.length <= br->descriptor.capacity);
+static void buffer_dtor(resource **rlist) {
+   buffer_resource *br = untrack_resource(rlist);
+   if (br->descriptor.allocated) {
+      assert(br->descriptor.active <= br->descriptor.allocated);
       assert(br->descriptor.start);
       free(br->descriptor.start);
    } else {
@@ -122,9 +139,9 @@ static void buffer_dtor(void) {
 
 static slice *new_tracked_buffer(void) {
    buffer_resource *br = new_tracked_resource(sizeof *br);
-   br->descriptor.start = 0;
-   br->descriptor.capacity = br->descriptor.length = 0;
-   br->rsrc.action = buffer_dtor;
+   br->descriptor.start = NULL;
+   br->descriptor.allocated = br->descriptor.active = 0;
+   br->rsrc.action = &buffer_dtor;
    return &br->descriptor;
 }
 
@@ -133,40 +150,40 @@ static void *realloc_ck(void *p, size_t newsz) {
    if (!newsz) {
       assert(p);
       free(p);
-      return 0;
+      return NULL;
    }
    if (!p) return malloc_ck(newsz);
-   if ((pnew = realloc(p, newsz)) == 0) {
-      die("Could not resize the memory allocation!");
+   if ((pnew = realloc(p, newsz)) == NULL) {
+      die("Could not resize the memory allocation");
    }
    return pnew;
 }
 
 static void grow_buffer(slice *buf, size_t bigger_minimum_size) {
    size_t bytes;
-   assert(bigger_minimum_size >= buf->length);
-   assert(bigger_minimum_size > buf->capacity);
+   assert(bigger_minimum_size >= buf->active);
+   assert(bigger_minimum_size > buf->allocated);
    for (bytes = 1; bytes < bigger_minimum_size; bytes += bytes) {}
    buf->start = realloc_ck(buf->start, bytes);
-   buf->capacity = bytes;
+   buf->allocated = bytes;
 }
 
 static void grow_buffer_by(slice *buf, size_t increment) {
    assert(increment > 0);
-   grow_buffer(buf, buf->length + increment);
+   grow_buffer(buf, buf->active + increment);
 }
 
 static void resize_buffer(slice *buf, size_t exact_new_size) {
-   assert(exact_new_size >= buf->length);
+   assert(exact_new_size >= buf->active);
    buf->start = realloc_ck(buf->start, exact_new_size);
-   buf->capacity = exact_new_size;
+   buf->allocated = exact_new_size;
 }
 
 static size_t fread_ck(void *dst, size_t elem_size, size_t n_elem, FILE *fh) {
    size_t read;
    assert(dst); assert(elem_size); assert(n_elem); assert(fh);
    if ((read = fread(dst, elem_size, n_elem, fh)) != n_elem) {
-      if (ferror(fh)) die("Read error!");
+      if (ferror(fh)) die("Read error");
       assert(feof(fh));
    }
    return read;
@@ -175,30 +192,30 @@ static size_t fread_ck(void *dst, size_t elem_size, size_t n_elem, FILE *fh) {
 static slice *tracked_stream_remainder(FILE *fh) {
    slice *buf;
    grow_buffer(buf = new_tracked_buffer(), 128);
-   assert(!buf->length);
+   assert(!buf->active);
    for (;;) {
       size_t read;
-      if (buf->length == buf->capacity) grow_buffer_by(buf, 1);
+      if (buf->active == buf->allocated) grow_buffer_by(buf, 1);
       if (
          !(
             read = fread_ck(
-                  buf->start + buf->length
+                  buf->start + buf->active
                ,  sizeof(char)
-               ,  buf->capacity - buf->length
+               ,  buf->allocated - buf->active
                ,  fh
             )
          )
       ) {
          break;
       }
-      buf->length += read;
+      buf->active += read;
    }
-   resize_buffer(buf, buf->length);
+   resize_buffer(buf, buf->active);
    return buf;
 }
 
 static void write_error(void) {
-   die("Write error!");
+   die("Write error");
 }
 
 static void fflush_ck(FILE *stream) {
@@ -209,7 +226,7 @@ static void freopen_ck(const char *pathname, const char *mode, FILE *stream) {
    FILE *result;
    if ((result = freopen(pathname, mode, stream)) != stream) {
       assert(!result);
-      die("Could not open stream!");
+      die("Could not open stream");
    }
 }
 
@@ -219,9 +236,9 @@ static void putchar_ck(int chr) {
 
 static char xdigits[] = "0123456789abcdef";
 
-static void print_size_t(size_t value) {
+static void print_off_t(off_t value) {
    if (value >= 0x10) {
-      print_size_t(value >> 4);
+      print_off_t(value >> 4);
       value &= 0xf;
    }
    putchar_ck(xdigits[value]);
@@ -236,7 +253,7 @@ static off_t convert_off_t(char const *hex) {
       char *found;
       {
          int digit;
-         if ((found = strchr(map, (digit = *hex))) != 0) {
+         if ((found = strchr(map, (digit = *hex))) != NULL) {
             int off;
             if ((off = (int)(found - map) & 1) == 0) {
                digit = map[off + 1];
@@ -255,9 +272,9 @@ static off_t convert_off_t(char const *hex) {
 }
 
 static void scan4match(
-   FILE *haystack, slice const *needle, slice *work, size_t fpos
+   FILE *haystack, slice const *needle, slice *work, off_t fpos
 ) {
-   if (needle->length > work->capacity) {
+   if (needle->active > work->allocated) {
       die("Buffer needs to be at least as large as <needle>!");
    }
    {
@@ -265,7 +282,7 @@ static void scan4match(
       while (
          (
             read = fread_ck(
-               work->start, sizeof(char), work->capacity, haystack
+               work->start, sizeof(char), work->allocated, haystack
             )
          ) != 0
       ) {
@@ -273,8 +290,8 @@ static void scan4match(
          already_matched = boff = 0;
          while (boff != read) {
             if (needle->start[already_matched] == work->start[boff]) {
-               if (++already_matched == needle->length) {
-                  print_size_t(fpos + boff - already_matched + 1);
+               if (++already_matched == needle->active) {
+                  print_off_t(fpos + (boff - already_matched + 1));
                   goto done;
                }
             } else if (already_matched) {
@@ -294,7 +311,7 @@ static off_t lseek_ck(int fildes, off_t offset, int whence) {
    off_t new;
    errno = 0;
    if ((new = lseek(fildes, offset, whence)) == (off_t)-1 && errno != 0) {
-      die("Failure changing the current file offset position!");
+      die("Failure changing the current file offset position");
    }
    return new;
 }
@@ -304,14 +321,14 @@ typedef struct {
    char const *prog_name;
 } usage_resource;
 
-static void usage_action(void) {
-   usage_resource *r = untrack_resource();
+static void usage_action(resource **rlist) {
+   usage_resource *r = untrack_resource(rlist);
    if (errors) (void)fprintf(stderr, HELP, r->prog_name, VERSION_INFO);
 }
 
-static void flusher_action() {
-   (void)untrack_resource();
-   fflush_ck(0);
+static void flusher_action(resource **rlist) {
+   (void)untrack_resource(rlist);
+   fflush_ck(NULL);
 }
 
 int main(int argc, char **argv) {
@@ -335,7 +352,9 @@ int main(int argc, char **argv) {
       } else if (*argv[arg] == '-') {
          die("Unknown option!");
       }
-      resize_buffer(work = new_tracked_buffer(), convert_off_t(argv[arg]));
+      resize_buffer(
+         work = new_tracked_buffer(), (size_t)convert_off_t(argv[arg])
+      );
       if (++arg == argc) goto need_more;
       needle = tracked_stream_remainder(stdin);
       freopen_ck(argv[arg], "r", stdin);
@@ -346,5 +365,5 @@ int main(int argc, char **argv) {
    }
    args_done:
    scan4match(stdin, needle, work, start);
-   release_tracked_until(0);
+   release_tracked_until(NULL);
 }
